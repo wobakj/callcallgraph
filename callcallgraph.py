@@ -119,13 +119,15 @@ class CCGWindow():
             return
 
         declaration_site = self.functionDefinition(symbol)
-        for file in declaration_site.keys():
-            for (func, line) in declaration_site[file]:
-                node = CCGNode(func, file, line)
-                if node not in self.nodes:
-                    self.nodes.add(node)
-                if node not in self.interest:
-                    self.interest.add(node)
+        if not declaration_site:
+            return
+        print(declaration_site)
+        file, line = declaration_site
+        node = CCGNode(symbol, file, line)
+        if node not in self.nodes:
+            self.nodes.add(node)
+        if node not in self.interest:
+            self.interest.add(node)
         self.update_graph()
 
     def cscope(self, mode, func):
@@ -165,7 +167,16 @@ class CCGWindow():
 
     def functionDefinition(self, func):
         print(f"functionDefinition for {func}:")
-        return self.cscope(1, func)[1]
+        # we dont need the name of this function - we aleady know it
+        definition = self.cscope(1, func)[1]
+        if not definition:
+            return None
+        assert len(definition) == 1
+        print(next(iter(definition.items())))
+        file, occurence = next(iter(definition.items()))
+        assert len(occurence) == 1
+        _, line = next(iter(occurence))
+        return (file, line)
 
     def functionsCalled(self, func):
         print(f"functionsCalled for {func}:")
@@ -195,15 +206,17 @@ class CCGWindow():
                     continue
 
                 declaration_site = self.functionDefinition(callee)
-                print(f"for callee {callee} got call {declaration_site}")
-                for file in declaration_site.keys():
-                    for (func, line) in declaration_site[file]:
-                        called_node = CCGNode(func, file, line)
-                        if called_node not in self.nodes:
-                            self.nodes.add(called_node)
+                if not declaration_site:
+                    continue
 
-                        e = (node, called_node)
-                        edges.add(e)
+                print(f"for callee {callee} got call {declaration_site}")
+                file, line = declaration_site
+                called_node = CCGNode(callee, file, line)
+                if called_node not in self.nodes:
+                    self.nodes.add(called_node)
+
+                e = (node, called_node)
+                edges.add(e)
 
             callers, caller_callsites = self.functionsCalling(node.func)
             for caller in callers:
@@ -211,15 +224,17 @@ class CCGWindow():
                     continue
 
                 declaration_site = self.functionDefinition(caller)
-                print(f"for caller {callee} got call {declaration_site}")
-                for file in declaration_site.keys():
-                    for (func, line) in declaration_site[file]:
-                        calling_node = CCGNode(func, file, line)
-                        if calling_node not in self.nodes:
-                            self.nodes.add(calling_node)
+                if not declaration_site:
+                    continue
 
-                        e = (calling_node, node)
-                        edges.add(e)
+                print(f"for caller {callee} got call {declaration_site}")
+                file, line = declaration_site
+                calling_node = CCGNode(caller, file, line)
+                if calling_node not in self.nodes:
+                    self.nodes.add(calling_node)
+
+                e = (calling_node, node)
+                edges.add(e)
 
         ccg_graph = nx.DiGraph()
         if self.config['show_folder']:
@@ -244,7 +259,8 @@ def main():
     window = CCGWindow()
     window.filename = args.input_file
     window.new_project()
-    window.add_symbol("main")
+    window.add_symbol("gettree")
+    # window.add_symbol("main")
     window.save()
 
 if __name__ == '__main__':
