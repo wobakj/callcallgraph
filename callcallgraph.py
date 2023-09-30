@@ -84,11 +84,11 @@ class CCGWindow():
         self.edges = set()
         self.set_dotcode("digraph G {}")
 
-    def save(self):
+    def save(self, graph):
         with open(self.working_dir + "/callgraph.dot", "w") as file:
-            file.write(self.dotcode)
+            file.write(str(nx_pydot.to_pydot(graph)))
 
-    def new_project(self):
+    def new_project(self, root):
         self.working_dir = os.path.dirname(self.filename)
         p = PurePath(self.working_dir, ".callcallgraph.json")
         try:
@@ -107,7 +107,7 @@ class CCGWindow():
                 conf.write(json.dumps(self.config, indent=4))
         self.ignore_symbols = set(map(lambda x: re.compile(x), self.config['ignore_symbols']))
 
-        self.update_graph()
+        return self.update_graph(root)
 
     def is_symbol_ignored(self, symbol):
         for p in self.ignore_symbols:
@@ -125,7 +125,6 @@ class CCGWindow():
 
         if node not in self.interest:
             self.interest.add(node)
-        self.update_graph()
 
     def cscope(self, mode, func):
         # TODO: check the cscope database exists.
@@ -137,11 +136,11 @@ class CCGWindow():
         # print("\ncsoutput")
         # print(csoutput)
         cscope_lines = [arr.strip().split(' ') for arr in csoutput.split('\n') if len(arr.split(' ')) > 1]
-        print("cscope_lines")
-        print(cscope_lines)
+        # print("cscope_lines")
+        # print(cscope_lines)
         function_names = set(map(lambda x: x[1], cscope_lines))
-        print("allFuncs")
-        print(function_names)
+        # print("allFuncs")
+        # print(function_names)
 
         occurences = {}
         for l in cscope_lines:
@@ -157,44 +156,49 @@ class CCGWindow():
                 occurences[file] = set()
                 occurences[file].add(tuple([function, line]))
 
-        print("occurences")
-        print(occurences)
-        print("")
+        # print("occurences")
+        # print(occurences)
+        # print("")
         return (function_names, occurences)
 
     def functionDefinition(self, func):
-        print(f"functionDefinition for {func}:")
+        # print(f"functionDefinition for {func}:")
         # we dont need the name of this function - we aleady know it
         definition = self.cscope(1, func)[1]
         if not definition:
             return None
         assert len(definition) == 1
-        print(next(iter(definition.items())))
         file, occurence = next(iter(definition.items()))
         assert len(occurence) == 1
         _, line = next(iter(occurence))
         return (file, line)
 
     def functionsCalled(self, func):
-        print(f"functionsCalled for {func}:")
+        # print(f"functionsCalled for {func}:")
         # Find functions called by this function:
         return self.cscope(2, func)
 
     def functionsCalling(self, func):
-        print(f"functionsCalling for {func}:")
+        # print(f"functionsCalling for {func}:")
         # Find functions calling this function:
         return self.cscope(3, func)
 
-    def update_graph(self):
-        """ update dot code based on the interested keys """
-        if len(self.interest) <= 0:
-            return
-
-        nodes_to_process = self.interest
+    def update_graph(self, root):
+        to_visit = list()
         visited = set()
-        for node in self.interest:
+        root_node = self.add_function(root)
+        if root_node:
+            to_visit.append(root_node)
+
+        while to_visit:
+            node = to_visit.pop()
+            if node in visited:
+                continue
+
             if self.is_symbol_ignored(node.func):
                 continue
+
+            visited.add(node)
 
             callees, callee_callsites = self.functionsCalled(node.func)
             for file, calls in callee_callsites.items():
@@ -208,29 +212,32 @@ class CCGWindow():
 
                     self.add_call(node, callee_node)
 
-            callers, caller_callsites = self.functionsCalling(node.func)
-            for file, calls in caller_callsites.items():
-                for caller, line in calls:
-                    if self.is_symbol_ignored(caller):
-                        continue
-
-                    caller_node = self.add_function(caller)
-                    if not caller_node:
-                        continue
-
-                    self.add_call(caller_node, node, )
+                    if callee_node not in visited:
+                        to_visit.append(callee_node)
 
         ccg_graph = nx.DiGraph()
-        if self.config['show_folder']:
-            for n in self.nodes:
+        for n in self.nodes:
+            if self.config['show_folder']:
                 ccg_graph.add_node(n, label="\"%s\n%s:%d\n%s\"" % (n.dir, n.file, n.line, n.func))
-        else:
-            for n in self.nodes:
+            else:
                 ccg_graph.add_node(n, label="\"%s:%d\n%s\"" % (n.file, n.line, n.func))
-        ccg_graph.add_edges_from(list(self.edges))
-        ccg_dot = str(nx_pydot.to_pydot(ccg_graph))
-        self.set_dotcode(ccg_dot)
 
+        ccg_graph.add_edges_from(list(self.edges))
+        return ccg_graph
+
+    def add_file(self, symbol):
+        declaration_site = self.functionDefinition(symbol)
+        # skip functions whose declaration could not be found
+        if not declaration_site:
+            return None
+
+        # print(f"for callee {callee} got call {declaration_site}")
+        file, _ = declaration_site
+
+        node = CCGNode(file, file, 0)
+        if node not in self.nodes:
+            self.nodes.add(node)
+        return node
 
     def add_function(self, symbol):
         declaration_site = self.functionDefinition(symbol)
@@ -261,10 +268,8 @@ def main():
 
     window = CCGWindow()
     window.filename = args.input_file
-    window.new_project()
-    window.add_symbol("gettree")
-    # window.add_symbol("main")
-    window.save()
+    graph = window.new_project("main")
+    window.save(graph)
 
 if __name__ == '__main__':
     main()
