@@ -1,3 +1,2 @@
 networkx
-xdot
 pydot
