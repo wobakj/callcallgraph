@@ -81,6 +81,7 @@ class CCGWindow():
         self.ignore_symbols = set()
         self.dotcode = None
         self.nodes = set()
+        self.edges = set()
         self.set_dotcode("digraph G {}")
 
     def save(self):
@@ -118,14 +119,10 @@ class CCGWindow():
         if(symbol == '//'):
             return
 
-        declaration_site = self.functionDefinition(symbol)
-        if not declaration_site:
+        node = self.add_function(symbol)
+        if not node:
             return
-        print(declaration_site)
-        file, line = declaration_site
-        node = CCGNode(symbol, file, line)
-        if node not in self.nodes:
-            self.nodes.add(node)
+
         if node not in self.interest:
             self.interest.add(node)
         self.update_graph()
@@ -193,7 +190,6 @@ class CCGWindow():
         if len(self.interest) <= 0:
             return
 
-        edges = set()
         nodes_to_process = self.interest
         visited = set()
         for node in self.interest:
@@ -201,40 +197,28 @@ class CCGWindow():
                 continue
 
             callees, callee_callsites = self.functionsCalled(node.func)
-            for callee in callees:
-                if self.is_symbol_ignored(callee):
-                    continue
+            for file, calls in callee_callsites.items():
+                for callee, line in calls:
+                    if self.is_symbol_ignored(callee):
+                        continue
 
-                declaration_site = self.functionDefinition(callee)
-                if not declaration_site:
-                    continue
+                    callee_node = self.add_function(callee)
+                    if not callee_node:
+                        continue
 
-                print(f"for callee {callee} got call {declaration_site}")
-                file, line = declaration_site
-                called_node = CCGNode(callee, file, line)
-                if called_node not in self.nodes:
-                    self.nodes.add(called_node)
-
-                e = (node, called_node)
-                edges.add(e)
+                    self.add_call(node, callee_node)
 
             callers, caller_callsites = self.functionsCalling(node.func)
-            for caller in callers:
-                if self.is_symbol_ignored(caller):
-                    continue
+            for file, calls in caller_callsites.items():
+                for caller, line in calls:
+                    if self.is_symbol_ignored(caller):
+                        continue
 
-                declaration_site = self.functionDefinition(caller)
-                if not declaration_site:
-                    continue
+                    caller_node = self.add_function(caller)
+                    if not caller_node:
+                        continue
 
-                print(f"for caller {callee} got call {declaration_site}")
-                file, line = declaration_site
-                calling_node = CCGNode(caller, file, line)
-                if calling_node not in self.nodes:
-                    self.nodes.add(calling_node)
-
-                e = (calling_node, node)
-                edges.add(e)
+                    self.add_call(caller_node, node, )
 
         ccg_graph = nx.DiGraph()
         if self.config['show_folder']:
@@ -243,9 +227,28 @@ class CCGWindow():
         else:
             for n in self.nodes:
                 ccg_graph.add_node(n, label="\"%s:%d\n%s\"" % (n.file, n.line, n.func))
-        ccg_graph.add_edges_from(list(edges))
+        ccg_graph.add_edges_from(list(self.edges))
         ccg_dot = str(nx_pydot.to_pydot(ccg_graph))
         self.set_dotcode(ccg_dot)
+
+
+    def add_function(self, symbol):
+        declaration_site = self.functionDefinition(symbol)
+        # skip functions whose declaration could not be found
+        if not declaration_site:
+            return None
+
+        # print(f"for callee {callee} got call {declaration_site}")
+        file, line = declaration_site
+
+        node = CCGNode(symbol, file, line)
+        if node not in self.nodes:
+            self.nodes.add(node)
+        return node
+
+    def add_call(self, caller, callee, line = -1):
+        e = (caller, callee)
+        self.edges.add(e)
 
     def set_dotcode(self, dotcode, filename=None):
         # print("\n\ndotcode:\n" + str(dotcode) + "\n\n")
