@@ -33,9 +33,11 @@ import argparse
 __author__ = 'Solomon Huang <kaichanh@gmail.com>'
 __version__ = '0.0.1'
 
+parser = argparse.ArgumentParser()
+
 
 class CCGNode(object):
-    ''' Represent the function with its file name and location '''
+    ''' Represent the function call with its file name and location '''
     def __init__(self, function, file, line):
         self.func = function
         self.full_file_path = file
@@ -116,7 +118,7 @@ class CCGWindow():
         if(symbol == '//'):
             return
 
-        defs, calls = self.functionDefincation(symbol)
+        defs, calls = self.functionDefinition(symbol)
         for file in calls.keys():
             for (func, line) in calls[file]:
                 node = CCGNode(func, file, line)
@@ -135,39 +137,43 @@ class CCGWindow():
             csoutput = str(proc.stdout.read(), encoding="utf-8")
         # print("\ncsoutput")
         # print(csoutput)
-        cslines = [arr.strip().split(' ') for arr in csoutput.split('\n') if len(arr.split(' ')) > 1]
-        # print("\ncslines")
-        # print(cslines)
-        allFuns = set(map(lambda x: x[1], cslines))
-        # print("\nallFuncs")
-        # print(allFuns)
+        cscope_lines = [arr.strip().split(' ') for arr in csoutput.split('\n') if len(arr.split(' ')) > 1]
+        print("cscope_lines")
+        print(cscope_lines)
+        function_names = set(map(lambda x: x[1], cscope_lines))
+        print("allFuncs")
+        print(function_names)
 
-        funs_files = {}
-        for l in cslines:
+        occurences = {}
+        for l in cscope_lines:
             file = l[0]
             function = l[1]
             line = l[2]
             # print("file %s %s\n" % (file, file[-2:]))
             if self.config['ignore_header'] and file[-2:] == ".h":
                 continue
-            if file in funs_files:
-                funs_files[file].add(tuple([function, line]))
+            if file in occurences:
+                occurences[file].add(tuple([function, line]))
             else:
-                funs_files[file] = set()
-                funs_files[file].add(tuple([function, line]))
+                occurences[file] = set()
+                occurences[file].add(tuple([function, line]))
 
-        # print("\funs_files")
-        # print(funs_files)
-        return (allFuns, funs_files)
+        print("occurences")
+        print(occurences)
+        print("")
+        return (function_names, occurences)
 
-    def functionDefincation(self, func):
-        return self.cscope(1, func)
+    def functionDefinition(self, func):
+        print(f"functionDefinition for {func}:")
+        return self.cscope(1, func)[1]
 
     def functionsCalled(self, func):
+        print(f"functionsCalled for {func}:")
         # Find functions called by this function:
         return self.cscope(2, func)
 
     def functionsCalling(self, func):
+        print(f"functionsCalling for {func}:")
         # Find functions calling this function:
         return self.cscope(3, func)
 
@@ -177,35 +183,40 @@ class CCGWindow():
             return
 
         edges = set()
+        nodes_to_process = self.interest
+        visited = set()
         for node in self.interest:
             if self.is_symbol_ignored(node.func):
                 continue
 
-            allFuncs, funsCalled = self.functionsCalled(node.func)
-            for m in allFuncs:
-                if self.is_symbol_ignored(m):
+            callees, callee_callsites = self.functionsCalled(node.func)
+            for callee in callees:
+                if self.is_symbol_ignored(callee):
                     continue
 
-                defs, calls = self.functionDefincation(m)
-                for file in calls.keys():
-                    for (func, line) in calls[file]:
-                        if file not in funsCalled:
+                declaration_site = self.functionDefinition(callee)
+                print(f"for function {callee} got name {name} and call {declaration_site}")
+                for file in declaration_site.keys():
+                    for (func, line) in declaration_site[file]:
+                        if file not in callee_callsites:
                             continue
                         called_node = CCGNode(func, file, line)
                         if called_node not in self.nodes:
                             self.nodes.add(called_node)
+
                         e = (node, called_node)
                         edges.add(e)
 
-            allFuncs, funsCalling = self.functionsCalling(node.func)
-            for m in allFuncs:
-                if self.is_symbol_ignored(m):
+            callers, caller_callsites = self.functionsCalling(node.func)
+            for caller in callers:
+                if self.is_symbol_ignored(caller):
                     continue
 
-                defs, calls = self.functionDefincation(m)
-                for file in calls.keys():
-                    for (func, line) in calls[file]:
-                        if file not in funsCalling:
+                declaration_site = self.functionDefinition(caller)
+                print(f"for function {callee} got name {name} and call {declaration_site}")
+                for file in declaration_site.keys():
+                    for (func, line) in declaration_site[file]:
+                        if file not in caller_callsites:
                             continue
                         calling_node = CCGNode(func, file, line)
                         if calling_node not in self.nodes:
@@ -230,8 +241,8 @@ class CCGWindow():
         self.dotcode = dotcode
 
 def main():
-    parser = argparse.ArgumentParser()
     parser.add_argument('input_file', help='path to cscope.out')
+    parser.add_argument('--limited', action='store_true')
     args = parser.parse_args()
 
     window = CCGWindow()
