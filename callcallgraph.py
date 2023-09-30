@@ -25,12 +25,13 @@ import subprocess
 from pathlib import PurePath
 
 import gi
+# this needs to come before import of gi.repository
+gi.require_version('Gtk', '3.0')
 import networkx as nx
 import xdot
 from gi.repository import Gtk
 from networkx import nx_pydot
 
-gi.require_version('Gtk', '3.0')
 
 
 __author__ = 'Solomon Huang <kaichanh@gmail.com>'
@@ -67,7 +68,7 @@ class CCGNode(object):
         return int.from_bytes(self.digest[0:4], byteorder='big')
 
 
-class CCGWindow(xdot.DotWindow):
+class CCGWindow(xdot.ui.DotWindow):
     ''' CallCallGraph Window '''
 
     def __init__(self):
@@ -308,10 +309,10 @@ class CCGWindow(xdot.DotWindow):
         ccg_graph = nx.DiGraph()
         if self.config['show_folder']:
             for n in self.nodes:
-                ccg_graph.add_node(n, label="%s\n%s:%d\n%s" % (n.dir, n.file, n.line, n.func))
+                ccg_graph.add_node(n, label="\"%s\n%s:%d\n%s\"" % (n.dir, n.file, n.line, n.func))
         else:
             for n in self.nodes:
-                ccg_graph.add_node(n, label="%s:%d\n%s" % (n.file, n.line, n.func))
+                ccg_graph.add_node(n, label="\"%s:%d\n%s\"" % (n.file, n.line, n.func))
         ccg_graph.add_edges_from(list(edges))
         ccg_dot = str(nx_pydot.to_pydot(ccg_graph))
         self.set_dotcode(ccg_dot)
@@ -328,9 +329,9 @@ class CCGWindow(xdot.DotWindow):
                 subprocess.call(cmd, shell=True, cwd=self.working_dir)
 
     def set_dotcode(self, dotcode, filename=None):
-        print("\n\ndotcode:\n" + dotcode + "\n\n")
+        print("\n\ndotcode:\n" + str(dotcode) + "\n\n")
         self.dotcode = dotcode
-        super(CCGWindow, self).set_dotcode(dotcode, filename)
+        super(CCGWindow, self).set_dotcode(bytes(dotcode,'us-ascii'), filename)
         self.update_title(os.path.basename(self.working_dir))
 
 
