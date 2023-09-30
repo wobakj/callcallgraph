@@ -38,7 +38,7 @@ parser = argparse.ArgumentParser()
 
 class CCGNode(object):
     ''' Represent the function call with its file name and location '''
-    def __init__(self, function, file, line):
+    def __init__(self, function, file, line, label = None):
         self.func = function
         self.full_file_path = file
         self.line = int(line)
@@ -48,14 +48,9 @@ class CCGNode(object):
         h.update(self.func.encode("utf-8"))
         self.hexdigest = h.hexdigest()
         self.digest = h.digest()
-        self.paths = []
         self.file = os.path.basename(self.full_file_path)
         self.dir = os.path.dirname(self.full_file_path)
-        dir = self.dir
-        while len(dir) > 0:
-            self.paths.insert(0, os.path.basename(dir))
-            dir = os.path.dirname(dir)
-        print(f"self.dir {self.dir} and self.file {self.file}")
+        self.label = label
 
     def __str__(self):
         return self.hexdigest[0:32]
@@ -232,9 +227,14 @@ class CCGWindow():
         to_visit = list()
         visited = set()
         root_node = self.create_function_node(root)
+        folder_graph = nx.MultiDiGraph()
         if root_node:
             to_visit.append(root_node)
-            self.add_file(root_node.dir if folders else root_node.full_file_path)
+            root_file_node = self.add_file(root_node.dir if folders else root_node.full_file_path)
+            if self.config['show_folder']:
+                folder_graph.add_node(root_file_node, label="\"%s\n%s\"" % (root_node.dir, root_node.file))
+            else:
+                folder_graph.add_node(root_file_node, label="\"%s\"" % (root_node.file))
 
         while to_visit:
             function_node = to_visit.pop()
@@ -258,31 +258,24 @@ class CCGWindow():
                         continue
 
                     callee_file_node = self.add_file(callee_node.dir if folders else callee_node.full_file_path)
-                    self.edges.add((file_node, callee_file_node, callee, function_node.file))
+                    if self.config['show_folder']:
+                        folder_graph.add_node(callee_file_node, label="\"%s\n%s\"" % (callee_file_node.dir, callee_file_node.file))
+                    else:
+                        folder_graph.add_node(callee_file_node, label="\"%s\"" % (callee_file_node.file))
+                    # self.edges.add((file_node, callee_file_node, callee, function_node.file))
+                    if folders:
+                        folder_graph.add_edge(file_node, callee_file_node, label="\"%s:%s\"" % (function_node.file, callee))
+                    else:
+                        folder_graph.add_edge(file_node, callee_file_node, label="\"%s\"" % callee)
 
                     if callee_node not in visited:
                         to_visit.append(callee_node)
 
-        ccg_graph = nx.MultiDiGraph()
-        for n in self.nodes:
-            if self.config['show_folder']:
-                ccg_graph.add_node(n, label="\"%s\n%s\"" % (n.dir, n.file))
-            else:
-                ccg_graph.add_node(n, label="\"%s\"" % (n.file))
 
-        for edge in self.edges:
-            if folders:
-                ccg_graph.add_edge(edge[0], edge[1], label="\"%s:%s\"" % (edge[3], edge[2]))
-            else:
-                ccg_graph.add_edge(edge[0], edge[1], label="\"%s\"" % edge[2])
-
-        return ccg_graph
+        return folder_graph
 
     def add_file(self, file_path):
-
         node = CCGNode(file_path, file_path, 0)
-        # if node not in self.nodes:
-        self.nodes.add(node)
         return node
 
     def add_folder(self, file_path):
