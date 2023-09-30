@@ -68,15 +68,12 @@ class CCGWindow():
     def __init__(self):
         self.base_title = "Call Call Graph"
         self.working_dir = None
-        self.interest = set()
         self.filename = None
         self.config = dict()
         self.config['ignore_symbols'] = []
         self.config['ignore_header'] = True
         self.config['show_folder'] = True
         self.ignore_symbols = set()
-        self.dotcode = None
-        self.set_dotcode("digraph G {}")
 
     def save(self, graph, filename):
         with open(self.working_dir + "/" + filename + ".dot", "w") as file:
@@ -106,18 +103,6 @@ class CCGWindow():
             if p.match(symbol) is not None:
                 return True
         return False
-
-    def add_symbol(self, symbol):
-        if(symbol == '//'):
-            return
-
-        node = self.create_function_node(symbol)
-        if not node:
-            return
-
-        self.nodes.add(node)
-        if node not in self.interest:
-            self.interest.add(node)
 
     def cscope(self, mode, func):
         # TODO: check the cscope database exists.
@@ -261,24 +246,15 @@ class CCGWindow():
         file, line = declaration_site
         return  CCGNode(symbol, file, line)
 
-    # def add_call(self, caller, callee, info = None):
-    #     self.edges.add((caller, callee, info))
-
-    def set_dotcode(self, dotcode, filename=None):
-        # print("\n\ndotcode:\n" + str(dotcode) + "\n\n")
-        self.dotcode = dotcode
-
 def main():
     parser.add_argument('input_file', help='path to cscope.out')
-    parser.add_argument('--callgraph', action='store_true')
-    parser.add_argument('--filegraph', action='store_true')
-    parser.add_argument('--foldergraph', action='store_true')
+    parser.add_argument('--graph', choices=['call', 'file', 'folder'], required=True)
     args = parser.parse_args()
-
     window = CCGWindow()
     window.filename = args.input_file
     window.new_project()
-    window.produce_graphs("main", args.callgraph, args.filegraph, args.foldergraph)
+    window.produce_graphs("main", args.graph == "call", args.graph == "file", args.graph == "folder")
+    return 0
 
 if __name__ == '__main__':
     main()
