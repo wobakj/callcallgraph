@@ -24,11 +24,15 @@ import re
 import subprocess
 from pathlib import PurePath
 
+import gi
+# this needs to come before import of gi.repository
+gi.require_version('Gtk', '3.0')
 import networkx as nx
 import xdot
+from gi.repository import Gtk
 from networkx import nx_pydot
 
-import argparse
+
 
 __author__ = 'Solomon Huang <kaichanh@gmail.com>'
 __version__ = '0.0.1'
@@ -64,7 +68,7 @@ class CCGNode(object):
         return int.from_bytes(self.digest[0:4], byteorder='big')
 
 
-class CCGWindow():
+class CCGWindow(xdot.ui.DotWindow):
     ''' CallCallGraph Window '''
 
     def __init__(self):
@@ -79,32 +83,108 @@ class CCGWindow():
         self.ignore_symbols = set()
         self.dotcode = None
         self.nodes = set()
+
+        xdot.DotWindow.__init__(self, width=600, height=512)
+        toolbar = self.uimanager.get_widget('/ToolBar')
+
+        item = Gtk.ToolButton(Gtk.STOCK_SAVE)
+        item.set_tooltip_markup("Save")
+        item.connect('clicked', self.on_save)
+        item.show()
+        toolbar.insert(item, 0)
+
+        item = Gtk.ToolButton(Gtk.STOCK_NEW)
+        item.set_tooltip_markup("New project")
+        item.connect('clicked', self.on_new_project)
+        item.show()
+        toolbar.insert(item, 0)
+
+        vbox = self.get_child()
+        hbox = Gtk.HBox()
+
+        label = Gtk.Label("Search symbol: ")
+        hbox.pack_start(label, False, True, True)
+        label.show()
+
+        entry = Gtk.Entry()
+        entry.connect('activate', self.on_symbol_enter)
+        hbox.pack_start(entry, True, True, 10)
+        entry.show()
+
+        item = Gtk.ToolButton(Gtk.STOCK_NEW)
+        item.set_tooltip_markup("Ignore symbols")
+        hbox.pack_end(item, False, True, 10)
+        item.show()
+
+        label = Gtk.Label("Ignore symbols: ")
+        hbox.pack_end(label, False, True, True)
+        label.show()
+
+        vbox.pack_start(hbox, False, True, True)
+        vbox.reorder_child(hbox, 1)
+        hbox.show()
+
+    def on_reload(self, action):
+        self.interest = set()
+        self.nodes = set()
         self.set_dotcode("digraph G {}")
 
-    def save(self):
-        with open(self.working_dir + "/callgraph.dot", "w") as file:
-            file.write(self.dotcode)
+    def on_save(self, action):
+        chooser = Gtk.FileChooserDialog("Save your work", self,
+                                        Gtk.FileChooserAction.SAVE,
+                                        (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                                         Gtk.STOCK_OK, Gtk.ResponseType.OK))
+        chooser.set_default_response(Gtk.ResponseType.OK)
+        filter = Gtk.FileFilter()
+        filter.set_name("Graphviz dot files")
+        filter.add_pattern("*.dot")
+        chooser.add_filter(filter)
+        filter = Gtk.FileFilter()
+        filter.set_name("All files")
+        filter.add_pattern("*")
+        chooser.add_filter(filter)
+        if chooser.run() == Gtk.ResponseType.OK:
+            self.filename = chooser.get_filename()
+            with open(self.filename, "w") as file:
+                file.write(self.dotcode)
+        else:
+            self.filename = None
 
-    def new_project(self):
-        self.working_dir = os.path.dirname(self.filename)
-        p = PurePath(self.working_dir, ".callcallgraph.json")
-        try:
-            with open(str(p), "r") as conf:
-                config = json.loads(conf.read())
-                for c in config.keys():
-                    if c not in self.config:
-                        self.config[c] = config[c]
-                    else:
-                        self.config[c] = config[c]
-            # write back config
-            with open(str(p), "w") as conf:
-                conf.write(json.dumps(self.config, indent=4))
-        except FileNotFoundError:
-            with open(str(p), "w") as conf:
-                conf.write(json.dumps(self.config, indent=4))
-        self.ignore_symbols = set(map(lambda x: re.compile(x), self.config['ignore_symbols']))
+        chooser.destroy()
 
-        self.update_graph()
+    def on_new_project(self, widget):
+        chooser = Gtk.FileChooserDialog("Open the source code directory", self,
+                                        Gtk.FileChooserAction.SELECT_FOLDER,
+                                        (Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+                                         Gtk.STOCK_OPEN, Gtk.ResponseType.OK))
+        chooser.set_default_response(Gtk.ResponseType.OK)
+        if chooser.run() == Gtk.ResponseType.OK:
+            filename = chooser.get_filename()
+            self.working_dir = filename
+            self.update_title(os.path.basename(self.working_dir))
+            self.interest = set()
+            self.filename = None
+            p = PurePath(self.working_dir, ".callcallgraph.json")
+            try:
+                with open(str(p), "r") as conf:
+                    config = json.loads(conf.read())
+                    for c in config.keys():
+                        if c not in self.config:
+                            self.config[c] = config[c]
+                        else:
+                            self.config[c] = config[c]
+                # write back config
+                with open(str(p), "w") as conf:
+                    conf.write(json.dumps(self.config, indent=4))
+            except FileNotFoundError:
+                with open(str(p), "w") as conf:
+                    conf.write(json.dumps(self.config, indent=4))
+            self.ignore_symbols = set(map(lambda x: re.compile(x), self.config['ignore_symbols']))
+
+            self.update_database()
+            self.update_graph()
+
+        chooser.destroy()
 
     def is_symbol_ignored(self, symbol):
         for p in self.ignore_symbols:
@@ -112,7 +192,19 @@ class CCGWindow():
                 return True
         return False
 
+    def on_symbol_enter(self, widget):
+        symbol = widget.get_text()
+        widget.set_text('')
+        if self.working_dir is None:
+            # FIXME: let's have a dialog for the user.
+            self.on_new_project(None)
+        if self.is_symbol_ignored(symbol):
+            return
+        self.add_symbol(symbol)
+
     def add_symbol(self, symbol):
+        # TODO: sould Saving the filename and line number.
+        print("add_symbol: %s" % symbol)
         if(symbol == '//'):
             return
 
@@ -127,7 +219,7 @@ class CCGWindow():
         self.update_graph()
 
     def cscope(self, mode, func):
-        # TODO: check the cscope database exists.
+        # TODO: check the cscope database is exist.
         cmd = "/usr/bin/cscope -d -l -L -%d %s" % (mode, func)
         # print(cmd)
         with subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True,
@@ -225,20 +317,28 @@ class CCGWindow():
         ccg_dot = str(nx_pydot.to_pydot(ccg_graph))
         self.set_dotcode(ccg_dot)
 
+    def update_database(self):
+        if not os.path.isfile(self.working_dir + "/cscope.out"):
+            dialog = Gtk.MessageDialog(parent=self, type=Gtk.MessageType.QUESTION, buttons=Gtk.ButtonsType.YES_NO)
+            dialog.set_default_response(Gtk.ResponseType.YES)
+            dialog.set_markup("Create cscope database for %s now ?" % self.working_dir)
+            ret = dialog.run()
+            dialog.destroy()
+            if ret == Gtk.ResponseType.YES:
+                cmd = "cscope -bkRu"
+                subprocess.call(cmd, shell=True, cwd=self.working_dir)
+
     def set_dotcode(self, dotcode, filename=None):
-        # print("\n\ndotcode:\n" + str(dotcode) + "\n\n")
+        print("\n\ndotcode:\n" + str(dotcode) + "\n\n")
         self.dotcode = dotcode
+        super(CCGWindow, self).set_dotcode(bytes(dotcode,'us-ascii'), filename)
+        self.update_title(os.path.basename(self.working_dir))
+
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('input_file', help='path to cscope.out')
-    args = parser.parse_args()
-
     window = CCGWindow()
-    window.filename = args.input_file
-    window.new_project()
-    window.add_symbol("main")
-    window.save()
+    window.connect('delete-event', Gtk.main_quit)
+    Gtk.main()
 
 if __name__ == '__main__':
     main()
