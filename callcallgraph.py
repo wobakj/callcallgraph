@@ -118,9 +118,9 @@ class CCGWindow():
         if(symbol == '//'):
             return
 
-        defs, calls = self.functionDefinition(symbol)
-        for file in calls.keys():
-            for (func, line) in calls[file]:
+        declaration_site = self.functionDefinition(symbol)
+        for file in declaration_site.keys():
+            for (func, line) in declaration_site[file]:
                 node = CCGNode(func, file, line)
                 if node not in self.nodes:
                     self.nodes.add(node)
@@ -195,11 +195,9 @@ class CCGWindow():
                     continue
 
                 declaration_site = self.functionDefinition(callee)
-                print(f"for function {callee} got name {name} and call {declaration_site}")
+                print(f"for callee {callee} got call {declaration_site}")
                 for file in declaration_site.keys():
                     for (func, line) in declaration_site[file]:
-                        if file not in callee_callsites:
-                            continue
                         called_node = CCGNode(func, file, line)
                         if called_node not in self.nodes:
                             self.nodes.add(called_node)
@@ -213,11 +211,9 @@ class CCGWindow():
                     continue
 
                 declaration_site = self.functionDefinition(caller)
-                print(f"for function {callee} got name {name} and call {declaration_site}")
+                print(f"for caller {callee} got call {declaration_site}")
                 for file in declaration_site.keys():
                     for (func, line) in declaration_site[file]:
-                        if file not in caller_callsites:
-                            continue
                         calling_node = CCGNode(func, file, line)
                         if calling_node not in self.nodes:
                             self.nodes.add(calling_node)
