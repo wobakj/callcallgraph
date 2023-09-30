@@ -226,6 +226,8 @@ class CCGWindow():
         return ccg_graph
 
     def file_graph(self, root):
+        self.nodes = set()
+        self.edges = set()
         to_visit = list()
         visited = set()
         root_node = self.create_function_node(root)
@@ -245,7 +247,7 @@ class CCGWindow():
             file_node = self.add_file(function_node.file)
 
             _, callee_callsites = self.functionsCalled(function_node.func)
-            for file, calls in callee_callsites.items():
+            for _, calls in callee_callsites.items():
                 for callee, line in calls:
                     if self.is_symbol_ignored(callee):
                         continue
@@ -254,14 +256,13 @@ class CCGWindow():
                     if not callee_node:
                         continue
 
-                    callee_file_node = self.add_file(file)
-
-                    self.edges.add((file_node, callee_file_node, callee, line))
+                    callee_file_node = self.add_file(callee_node.file)
+                    self.edges.add((file_node, callee_file_node, callee))
 
                     if callee_node not in visited:
                         to_visit.append(callee_node)
 
-        ccg_graph = nx.DiGraph()
+        ccg_graph = nx.MultiDiGraph()
         for n in self.nodes:
             if self.config['show_folder']:
                 ccg_graph.add_node(n, label="\"%s\n%s\"" % (n.dir, n.file))
@@ -269,7 +270,7 @@ class CCGWindow():
                 ccg_graph.add_node(n, label="\"%s\"" % (n.file))
 
         for edge in self.edges:
-            ccg_graph.add_edge(edge[0], edge[1], label="\"%s\n%s\"" % (edge[2], edge[3]))
+            ccg_graph.add_edge(edge[0], edge[1], label="\"%s\"" % edge[2])
 
         return ccg_graph
 
@@ -310,8 +311,6 @@ def main():
     window.new_project()
     call_graph = window.call_graph("main")
     window.save(call_graph, "callgraph")
-    window.nodes = set()
-    window.edges = set()
     file_graph = window.file_graph("main")
     window.save(file_graph, "filegraph")
 
