@@ -55,6 +55,7 @@ class CCGNode(object):
         while len(dir) > 0:
             self.paths.insert(0, os.path.basename(dir))
             dir = os.path.dirname(dir)
+        print(f"self.dir {self.dir} and self.file {self.file}")
 
     def __str__(self):
         return self.hexdigest[0:32]
@@ -233,7 +234,7 @@ class CCGWindow():
         root_node = self.create_function_node(root)
         if root_node:
             to_visit.append(root_node)
-            self.add_file(root_node.file)
+            self.add_file(root_node.full_file_path)
 
         while to_visit:
             function_node = to_visit.pop()
@@ -244,7 +245,7 @@ class CCGWindow():
                 continue
 
             visited.add(function_node)
-            file_node = self.add_file(function_node.file)
+            file_node = self.add_file(function_node.full_file_path)
 
             _, callee_callsites = self.functionsCalled(function_node.func)
             for _, calls in callee_callsites.items():
@@ -256,7 +257,7 @@ class CCGWindow():
                     if not callee_node:
                         continue
 
-                    callee_file_node = self.add_file(callee_node.file)
+                    callee_file_node = self.add_file(callee_node.full_file_path)
                     self.edges.add((file_node, callee_file_node, callee))
 
                     if callee_node not in visited:
@@ -274,9 +275,9 @@ class CCGWindow():
 
         return ccg_graph
 
-    def add_file(self, file):
+    def add_file(self, file_path):
 
-        node = CCGNode(file, file, 0)
+        node = CCGNode(file_path, file_path, 0)
         # if node not in self.nodes:
         self.nodes.add(node)
         return node
