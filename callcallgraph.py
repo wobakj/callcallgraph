@@ -84,11 +84,11 @@ class CCGWindow():
         self.edges = set()
         self.set_dotcode("digraph G {}")
 
-    def save(self, graph):
-        with open(self.working_dir + "/callgraph.dot", "w") as file:
+    def save(self, graph, filename):
+        with open(self.working_dir + "/" + filename + ".dot", "w") as file:
             file.write(str(nx_pydot.to_pydot(graph)))
 
-    def new_project(self, root):
+    def new_project(self):
         self.working_dir = os.path.dirname(self.filename)
         p = PurePath(self.working_dir, ".callcallgraph.json")
         try:
@@ -107,8 +107,6 @@ class CCGWindow():
                 conf.write(json.dumps(self.config, indent=4))
         self.ignore_symbols = set(map(lambda x: re.compile(x), self.config['ignore_symbols']))
 
-        return self.update_graph(root)
-
     def is_symbol_ignored(self, symbol):
         for p in self.ignore_symbols:
             if p.match(symbol) is not None:
@@ -119,17 +117,17 @@ class CCGWindow():
         if(symbol == '//'):
             return
 
-        node = self.add_function(symbol)
+        node = self.create_function_node(symbol)
         if not node:
             return
 
+        self.nodes.add(node)
         if node not in self.interest:
             self.interest.add(node)
 
     def cscope(self, mode, func):
         # TODO: check the cscope database exists.
         cmd = "/usr/bin/cscope -d -l -L -%d %s" % (mode, func)
-        # print(cmd)
         with subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True,
                               cwd=self.working_dir) as proc:
             csoutput = str(proc.stdout.read(), encoding="utf-8")
@@ -183,12 +181,13 @@ class CCGWindow():
         # Find functions calling this function:
         return self.cscope(3, func)
 
-    def update_graph(self, root):
+    def call_graph(self, root):
         to_visit = list()
         visited = set()
-        root_node = self.add_function(root)
+        root_node = self.create_function_node(root)
         if root_node:
             to_visit.append(root_node)
+            self.nodes.add(root_node)
 
         while to_visit:
             node = to_visit.pop()
@@ -200,17 +199,18 @@ class CCGWindow():
 
             visited.add(node)
 
-            callees, callee_callsites = self.functionsCalled(node.func)
+            _, callee_callsites = self.functionsCalled(node.func)
             for file, calls in callee_callsites.items():
                 for callee, line in calls:
                     if self.is_symbol_ignored(callee):
                         continue
 
-                    callee_node = self.add_function(callee)
+                    callee_node = self.create_function_node(callee)
                     if not callee_node:
                         continue
 
-                    self.add_call(node, callee_node)
+                    self.nodes.add(callee_node)
+                    self.edges.add((node, callee_node))
 
                     if callee_node not in visited:
                         to_visit.append(callee_node)
@@ -225,21 +225,62 @@ class CCGWindow():
         ccg_graph.add_edges_from(list(self.edges))
         return ccg_graph
 
-    def add_file(self, symbol):
-        declaration_site = self.functionDefinition(symbol)
-        # skip functions whose declaration could not be found
-        if not declaration_site:
-            return None
+    def file_graph(self, root):
+        to_visit = list()
+        visited = set()
+        root_node = self.create_function_node(root)
+        if root_node:
+            to_visit.append(root_node)
+            self.add_file(root_node.file)
 
-        # print(f"for callee {callee} got call {declaration_site}")
-        file, _ = declaration_site
+        while to_visit:
+            function_node = to_visit.pop()
+            if function_node in visited:
+                continue
+
+            if self.is_symbol_ignored(function_node.func):
+                continue
+
+            visited.add(function_node)
+            file_node = self.add_file(function_node.file)
+
+            _, callee_callsites = self.functionsCalled(function_node.func)
+            for file, calls in callee_callsites.items():
+                for callee, line in calls:
+                    if self.is_symbol_ignored(callee):
+                        continue
+
+                    callee_node = self.create_function_node(callee)
+                    if not callee_node:
+                        continue
+
+                    callee_file_node = self.add_file(file)
+
+                    self.edges.add((file_node, callee_file_node, callee, line))
+
+                    if callee_node not in visited:
+                        to_visit.append(callee_node)
+
+        ccg_graph = nx.DiGraph()
+        for n in self.nodes:
+            if self.config['show_folder']:
+                ccg_graph.add_node(n, label="\"%s\n%s\"" % (n.dir, n.file))
+            else:
+                ccg_graph.add_node(n, label="\"%s\"" % (n.file))
+
+        for edge in self.edges:
+            ccg_graph.add_edge(edge[0], edge[1], label="\"%s\n%s\"" % (edge[2], edge[3]))
+
+        return ccg_graph
+
+    def add_file(self, file):
 
         node = CCGNode(file, file, 0)
-        if node not in self.nodes:
-            self.nodes.add(node)
+        # if node not in self.nodes:
+        self.nodes.add(node)
         return node
 
-    def add_function(self, symbol):
+    def create_function_node(self, symbol):
         declaration_site = self.functionDefinition(symbol)
         # skip functions whose declaration could not be found
         if not declaration_site:
@@ -249,13 +290,11 @@ class CCGWindow():
         file, line = declaration_site
 
         node = CCGNode(symbol, file, line)
-        if node not in self.nodes:
-            self.nodes.add(node)
+        # if node not in self.nodes:
         return node
 
-    def add_call(self, caller, callee, line = -1):
-        e = (caller, callee)
-        self.edges.add(e)
+    # def add_call(self, caller, callee, info = None):
+    #     self.edges.add((caller, callee, info))
 
     def set_dotcode(self, dotcode, filename=None):
         # print("\n\ndotcode:\n" + str(dotcode) + "\n\n")
@@ -268,8 +307,13 @@ def main():
 
     window = CCGWindow()
     window.filename = args.input_file
-    graph = window.new_project("main")
-    window.save(graph)
+    window.new_project()
+    call_graph = window.call_graph("main")
+    window.save(call_graph, "callgraph")
+    window.nodes = set()
+    window.edges = set()
+    file_graph = window.file_graph("main")
+    window.save(file_graph, "filegraph")
 
 if __name__ == '__main__':
     main()
