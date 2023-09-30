@@ -226,7 +226,7 @@ class CCGWindow():
         ccg_graph.add_edges_from(list(self.edges))
         return ccg_graph
 
-    def file_graph(self, root):
+    def file_graph(self, root, folders = False):
         self.nodes = set()
         self.edges = set()
         to_visit = list()
@@ -234,7 +234,7 @@ class CCGWindow():
         root_node = self.create_function_node(root)
         if root_node:
             to_visit.append(root_node)
-            self.add_file(root_node.full_file_path)
+            self.add_file(root_node.dir if folders else root_node.full_file_path)
 
         while to_visit:
             function_node = to_visit.pop()
@@ -245,7 +245,7 @@ class CCGWindow():
                 continue
 
             visited.add(function_node)
-            file_node = self.add_file(function_node.full_file_path)
+            file_node = self.add_file(function_node.dir if folders else function_node.full_file_path)
 
             _, callee_callsites = self.functionsCalled(function_node.func)
             for _, calls in callee_callsites.items():
@@ -257,8 +257,8 @@ class CCGWindow():
                     if not callee_node:
                         continue
 
-                    callee_file_node = self.add_file(callee_node.full_file_path)
-                    self.edges.add((file_node, callee_file_node, callee))
+                    callee_file_node = self.add_file(callee_node.dir if folders else callee_node.full_file_path)
+                    self.edges.add((file_node, callee_file_node, callee, function_node.file))
 
                     if callee_node not in visited:
                         to_visit.append(callee_node)
@@ -271,11 +271,21 @@ class CCGWindow():
                 ccg_graph.add_node(n, label="\"%s\"" % (n.file))
 
         for edge in self.edges:
-            ccg_graph.add_edge(edge[0], edge[1], label="\"%s\"" % edge[2])
+            if folders:
+                ccg_graph.add_edge(edge[0], edge[1], label="\"%s:%s\"" % (edge[3], edge[2]))
+            else:
+                ccg_graph.add_edge(edge[0], edge[1], label="\"%s\"" % edge[2])
 
         return ccg_graph
 
     def add_file(self, file_path):
+
+        node = CCGNode(file_path, file_path, 0)
+        # if node not in self.nodes:
+        self.nodes.add(node)
+        return node
+
+    def add_folder(self, file_path):
 
         node = CCGNode(file_path, file_path, 0)
         # if node not in self.nodes:
@@ -314,6 +324,8 @@ def main():
     window.save(call_graph, "callgraph")
     file_graph = window.file_graph("main")
     window.save(file_graph, "filegraph")
+    folder_graph = window.file_graph("main", True)
+    window.save(folder_graph, "foldergraph")
 
 if __name__ == '__main__':
     main()
