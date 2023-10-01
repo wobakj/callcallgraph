@@ -1,13 +1,13 @@
 # Call Call Graph
 
 A command line utility producing a call graph on function/file/folder level from a cscope.out file.
-Based on [cscope][1], [xdot][3].
-Previous work is from [solomonhuang][4].
-Uses `main` as the root for building the call graph.
+Based on [cscope][1].
+Previous work is from [solomonhuang][2].
 Everything is just hacked together.
 
 # Setup
 - install cscope `sudo apt install cscope`
+- if you want to generate an image from the .dot output, install graphviz `sudo apt install graphviz`
 - create a virtual environment
 - install the requirements
 
@@ -17,6 +17,4 @@ Everything is just hacked together.
 - execute cscope_to_view.sh <path-to-cscope-file> <call|file|folder>
 
 [1]: http://cscope.sourceforge.net/
-[3]: http://code.google.com/p/jrfonseca/wiki/XDot
-[4]: https://github.com/solomonhuang/callcallgraph
-
+[2]: https://github.com/solomonhuang/callcallgraph

@@ -167,9 +167,11 @@ class CCGWindow():
         folder_graph = nx.MultiDiGraph()
         file_graph = nx.MultiDiGraph()
 
-        functions, callsites = self.functionsCalled("\".*\"")
-        for function in functions:
-
+        # get all called functions
+        # https://stackoverflow.com/a/30319875
+        functions, _ = self.functionsCalled("\".*\"")
+        while functions:
+            function = functions.pop()
             if function in visited:
                 continue
 
@@ -181,7 +183,7 @@ class CCGWindow():
             function_node = self.create_function_node(function)
             if not function_node:
                 continue
-            # print(f"processing {function}")
+
             if (calls):
                 call_graph.add_node(function, label="\"%s\n%s:%d\n%s\"" % (function_node.dir, function_node.file, function_node.line, function))
 
@@ -213,6 +215,14 @@ class CCGWindow():
 
                     if (folders and root_node.dir and callee_node.dir):
                         folder_graph.add_edge(function_node.dir, callee_node.dir, label="\"%s:%s\"" % (function_node.file, callee))
+
+            # check callers to find entrypoint functions
+            callers, _ = self.functionsCalling(function)
+            for caller in callers:
+                if caller in visited:
+                    continue
+                if caller not in functions:
+                    functions.add(caller)
 
         if (calls):
             self.save(call_graph, "callgraph")
