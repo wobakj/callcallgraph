@@ -140,13 +140,15 @@ class CCGWindow():
     def functionDefinition(self, func):
         # print(f"functionDefinition for {func}:")
         # we dont need the name of this function - we aleady know it
-        definition = self.cscope(1, func)[1]
-        if not definition:
+        definitions = self.cscope(1, func)[1]
+        if not definitions:
             return None
-        assert len(definition) == 1
-        file, occurence = next(iter(definition.items()))
+        if len(definitions) > 1:
+            print(f"Warning: {func} is declared in multiple files: {definitions.keys()} - taking first one")
+
+        file, occurence = next(iter(definitions.items()))
         if len(occurence) > 1:
-            print(f"Warning: {func} has multiple declarations - taking first one")
+            print(f"Warning: {func} has multiple declarations: {occurences} - taking first one")
         _, line = next(iter(occurence))
         return (file, line)
 
