@@ -162,44 +162,40 @@ class CCGWindow():
         return self.cscope(3, func)
 
     def produce_graphs(self, root,calls, files, folders):
-        to_visit = list()
         visited = set()
         call_graph = nx.DiGraph()
         folder_graph = nx.MultiDiGraph()
         file_graph = nx.MultiDiGraph()
 
-        # _, callsites = self.functionsCalled("/")
+        functions, callsites = self.functionsCalled("\".*\"")
+        for function in functions:
 
-        # for callsite in callsites:
-        root_node = self.create_function_node(root)
-        if not root_node:
-            return
-
-        to_visit.append(root_node)
-
-        if (calls):
-            call_graph.add_node(root_node.func, label="\"%s\n%s:%d\n%s\"" % (root_node.dir, root_node.file, root_node.line, root_node.func))
-
-        if (files):
-            file_graph.add_node(root_node.full_file_path, label="\"%s\n%s\"" % (root_node.dir, root_node.file))
-
-        if (folders and root_node.dir):
-            folder_graph.add_node(root_node.dir, label="\"%s\"" % root_node.dir)
-
-
-        while to_visit:
-            function_node = to_visit.pop()
-            if function_node in visited:
+            if function in visited:
                 continue
 
-            if self.is_symbol_ignored(function_node.func):
+            visited.add(function)
+
+            if self.is_symbol_ignored(function):
                 continue
 
-            visited.add(function_node)
+            function_node = self.create_function_node(function)
+            if not function_node:
+                continue
+            # print(f"processing {function}")
+            if (calls):
+                call_graph.add_node(function, label="\"%s\n%s:%d\n%s\"" % (function_node.dir, function_node.file, function_node.line, function))
+
+            if (files):
+                file_graph.add_node(function_node.full_file_path, label="\"%s\n%s\"" % (function_node.dir, function_node.file))
+
+            if (folders and function_node.dir):
+                folder_graph.add_node(function_node.dir, label="\"%s\"" % function_node.dir)
+
+
             file_node = self.add_file(function_node.full_file_path)
             folder_node = self.add_file(function_node.dir)
 
-            _, callee_callsites = self.functionsCalled(function_node.func)
+            _, callee_callsites = self.functionsCalled(function)
             for _, calls in callee_callsites.items():
                 for callee, line in calls:
                     if self.is_symbol_ignored(callee):
@@ -210,21 +206,13 @@ class CCGWindow():
                         continue
 
                     if (calls):
-                        call_graph.add_node(callee, label="\"%s\n%s:%d\n%s\"" % (callee_node.dir, callee_node.file, callee_node.line, callee_node.func))
-                        call_graph.add_edge(function_node.func, callee)
+                        call_graph.add_edge(function, callee)
 
                     if (files):
-                        callee_file_node = self.add_file(callee_node.full_file_path)
-                        file_graph.add_node(callee_node.full_file_path, label="\"%s\n%s\"" % (callee_file_node.dir, callee_file_node.file))
                         file_graph.add_edge(function_node.full_file_path, callee_node.full_file_path, label="\"%s\"" % callee)
 
                     if (folders and root_node.dir and callee_node.dir):
-                        folder_graph.add_node(callee_node.dir, label="\"%s\"" % callee_node.dir)
                         folder_graph.add_edge(function_node.dir, callee_node.dir, label="\"%s:%s\"" % (function_node.file, callee))
-
-
-                    if callee_node not in visited:
-                        to_visit.append(callee_node)
 
         if (calls):
             self.save(call_graph, "callgraph")
