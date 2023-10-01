@@ -7,7 +7,8 @@ Uses `main` as the root for building the call graph.
 Everything is just hacked together.
 
 # Setup
-- Create a virtual environment
+- install cscope `sudo apt install cscope`
+- create a virtual environment
 - install the requirements
 
 # Usage

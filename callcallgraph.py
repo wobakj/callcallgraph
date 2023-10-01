@@ -43,8 +43,8 @@ class CCGNode(object):
         self.full_file_path = file
         self.line = int(line)
         h = hashlib.sha512()
-        h.update(self.full_file_path.encode("utf-8"))
-        h.update(str(self.line).encode("utf-8"))
+        # h.update(self.full_file_path.encode("utf-8"))
+        # h.update(str(self.line).encode("utf-8"))
         h.update(self.func.encode("utf-8"))
         self.hexdigest = h.hexdigest()
         self.digest = h.digest()
@@ -146,7 +146,8 @@ class CCGWindow():
             return None
         assert len(definition) == 1
         file, occurence = next(iter(definition.items()))
-        assert len(occurence) == 1
+        if len(occurence) > 1:
+            print(f"Warning: {func} has multiple declarations - taking first one")
         _, line = next(iter(occurence))
         return (file, line)
 
@@ -167,6 +168,9 @@ class CCGWindow():
         folder_graph = nx.MultiDiGraph()
         file_graph = nx.MultiDiGraph()
 
+        # _, callsites = self.functionsCalled("/")
+
+        # for callsite in callsites:
         root_node = self.create_function_node(root)
         if not root_node:
             return
@@ -174,15 +178,13 @@ class CCGWindow():
         to_visit.append(root_node)
 
         if (calls):
-            call_graph.add_node(root_node, label="\"%s\n%s:%d\n%s\"" % (root_node.dir, root_node.file, root_node.line, root_node.func))
+            call_graph.add_node(root_node.func, label="\"%s\n%s:%d\n%s\"" % (root_node.dir, root_node.file, root_node.line, root_node.func))
 
         if (files):
-            root_file_node = self.add_file(root_node.full_file_path)
-            file_graph.add_node(root_file_node, label="\"%s\n%s\"" % (root_node.dir, root_node.file))
+            file_graph.add_node(root_node.full_file_path, label="\"%s\n%s\"" % (root_node.dir, root_node.file))
 
-        if (folders):
-            root_folder_node = self.add_file(root_node.dir)
-            folder_graph.add_node(root_folder_node, label="\"%s\"" % root_node.dir)
+        if (folders and root_node.dir):
+            folder_graph.add_node(root_node.dir, label="\"%s\"" % root_node.dir)
 
 
         while to_visit:
@@ -208,18 +210,17 @@ class CCGWindow():
                         continue
 
                     if (calls):
-                        call_graph.add_node(callee_node, label="\"%s\n%s:%d\n%s\"" % (callee_node.dir, callee_node.file, callee_node.line, callee_node.func))
-                        call_graph.add_edge(function_node, callee_node)
+                        call_graph.add_node(callee, label="\"%s\n%s:%d\n%s\"" % (callee_node.dir, callee_node.file, callee_node.line, callee_node.func))
+                        call_graph.add_edge(function_node.func, callee)
 
                     if (files):
                         callee_file_node = self.add_file(callee_node.full_file_path)
-                        file_graph.add_node(callee_file_node, label="\"%s\n%s\"" % (callee_file_node.dir, callee_file_node.file))
-                        file_graph.add_edge(file_node, callee_file_node, label="\"%s\"" % callee)
+                        file_graph.add_node(callee_node.full_file_path, label="\"%s\n%s\"" % (callee_file_node.dir, callee_file_node.file))
+                        file_graph.add_edge(function_node.full_file_path, callee_node.full_file_path, label="\"%s\"" % callee)
 
-                    if (folders):
-                        callee_folder_node = self.add_file(callee_node.dir)
-                        folder_graph.add_node(callee_folder_node, label="\"%s\n%s\"" % (callee_folder_node.dir, callee_folder_node.file))
-                        folder_graph.add_edge(folder_node, callee_folder_node, label="\"%s:%s\"" % (function_node.file, callee))
+                    if (folders and root_node.dir and callee_node.dir):
+                        folder_graph.add_node(callee_node.dir, label="\"%s\"" % callee_node.dir)
+                        folder_graph.add_edge(function_node.dir, callee_node.dir, label="\"%s:%s\"" % (function_node.file, callee))
 
 
                     if callee_node not in visited:
@@ -258,3 +259,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+# todo: ignore self loops between nodes
