@@ -25,7 +25,6 @@ import subprocess
 from pathlib import PurePath
 
 import networkx as nx
-import xdot
 from networkx import nx_pydot
 
 import argparse
@@ -161,7 +160,7 @@ class CCGWindow():
         # Find functions calling this function:
         return self.cscope(3, func)
 
-    def produce_graphs(self, root,calls, files, folders):
+    def produce_graphs(self,calls, files, folders):
         visited = set()
         call_graph = nx.DiGraph()
         folder_graph = nx.MultiDiGraph()
@@ -211,10 +210,12 @@ class CCGWindow():
                         call_graph.add_edge(function, callee)
 
                     if (files):
-                        file_graph.add_edge(function_node.full_file_path, callee_node.full_file_path, label="\"%s\"" % callee)
+                        if (function_node.full_file_path != callee_node.full_file_path):
+                            file_graph.add_edge(function_node.full_file_path, callee_node.full_file_path, label="\"%s:%s\"" % (line, callee))
 
-                    if (folders and root_node.dir and callee_node.dir):
-                        folder_graph.add_edge(function_node.dir, callee_node.dir, label="\"%s:%s\"" % (function_node.file, callee))
+                    if (folders and function_node.dir and callee_node.dir):
+                        if (function_node.dir != callee_node.dir):
+                            folder_graph.add_edge(function_node.dir, callee_node.dir, label="\"%s:%s\"" % (function_node.file, callee))
 
             # check callers to find entrypoint functions
             callers, _ = self.functionsCalling(function)
@@ -252,7 +253,7 @@ def main():
     window = CCGWindow()
     window.filename = args.input_file
     window.new_project()
-    window.produce_graphs("main", args.graph == "call", args.graph == "file", args.graph == "folder")
+    window.produce_graphs(args.graph == "call", args.graph == "file", args.graph == "folder")
     return 0
 
 if __name__ == '__main__':
