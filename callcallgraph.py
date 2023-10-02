@@ -194,38 +194,31 @@ class CCGWindow():
             if (folders and function_node.dir):
                 folder_graph.add_node(function_node.dir, label="\"%s\"" % function_node.dir)
 
-
-            file_node = self.add_file(function_node.full_file_path)
-            folder_node = self.add_file(function_node.dir)
-
-            _, callee_callsites = self.functionsCalled(function)
-            for _, calls in callee_callsites.items():
-                for callee, line in calls:
-                    if self.is_symbol_ignored(callee):
+            # check callers to find entrypoint functions
+            _, caller_callsites = self.functionsCalling(function)
+            for files, calls in caller_callsites.items():
+                for caller, line in calls:
+                    if self.is_symbol_ignored(caller):
                         continue
 
-                    callee_node = self.create_function_node(callee)
-                    if not callee_node:
+                    caller_node = self.create_function_node(caller)
+                    if not caller_node:
                         continue
 
                     if (calls):
-                        call_graph.add_edge(function, callee)
+                        call_graph.add_edge(caller, function)
 
                     if (files):
-                        if (function_node.full_file_path != callee_node.full_file_path):
-                            file_graph.add_edge(function_node.full_file_path, callee_node.full_file_path, label="\"%s:%s\"" % (line, callee))
+                        if (function_node.full_file_path != caller_node.full_file_path):
+                            file_graph.add_edge(caller_node.full_file_path, function_node.full_file_path, label="\"%s:%s\"" % (line, function))
 
-                    if (folders and function_node.dir and callee_node.dir):
-                        if (function_node.dir != callee_node.dir):
-                            folder_graph.add_edge(function_node.dir, callee_node.dir, label="\"%s:%s\"" % (function_node.file, callee))
+                    if (folders and function_node.dir and caller_node.dir):
+                        if (function_node.dir != caller_node.dir):
+                            folder_graph.add_edge(caller_node.dir, function_node.dir, label="\"%s:%s\"" % (function_node.file, function))
 
-            # check callers to find entrypoint functions
-            callers, _ = self.functionsCalling(function)
-            for caller in callers:
-                if caller in visited:
-                    continue
-                if caller not in functions:
-                    functions.add(caller)
+                    # add callers that are never called and are therefore not in functions
+                    if caller not in visited and caller not in functions:
+                        functions.add(caller)
 
         if (calls):
             self.save(call_graph, "callgraph")
